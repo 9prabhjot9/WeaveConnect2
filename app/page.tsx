@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ArrowRight, CheckCircle, Wallet, LogOut } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -13,33 +13,48 @@ export default function Home() {
   const [connected, setConnected] = useState(false)
   const [walletAddress, setWalletAddress] = useState("")
   const [error, setError] = useState("")
+  const [isWalletAvailable, setIsWalletAvailable] = useState(false)
+
+  // Check if wallet is available when component mounts
+  useEffect(() => {
+    // Only access window object in browser environment
+    setIsWalletAvailable(typeof window !== 'undefined' && !!window.arweaveWallet)
+  }, [])
 
   const connectWallet = async () => {
+    if (!isWalletAvailable) {
+      setError("Wander wallet not found. Please install the extension first.")
+      window.open("https://www.wander.app", "_blank")
+      return
+    }
+
     setConnecting(true)
     setError("")
     
     try {
-      // Basic connect to Wander wallet
+      // Connect to the wallet - this will trigger the Wander popup
+      // TypeScript safety check
       if (!window.arweaveWallet) {
-        setError("Wander wallet not found. Please install the extension first.")
-        window.open("https://www.wander.app", "_blank")
-        return
+        throw new Error("Arweave wallet not available");
       }
       
-      // Connect to the wallet - this will trigger the Wander popup
       await window.arweaveWallet.connect(['ACCESS_ADDRESS', 'SIGN_TRANSACTION'])
       
       // Get the wallet address
       const address = await window.arweaveWallet.getActiveAddress()
       setWalletAddress(address)
       setConnected(true)
-    } catch (error) {
+    } catch (error: unknown) {
       // Ignore user cancellations - don't treat them as errors
-      if (!error.message || 
-          !(error.message.includes("User cancelled") || 
-            error.message.includes("user rejected") ||
-            error.message.includes("cancelled the AuthRequest"))) {
-        setError("Connection failed: " + error.message)
+      if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+        const errorMessage = error.message;
+        if (!(errorMessage.includes("User cancelled") || 
+              errorMessage.includes("user rejected") ||
+              errorMessage.includes("cancelled the AuthRequest"))) {
+          setError("Connection failed: " + errorMessage)
+        }
+      } else {
+        setError("Connection failed: Unknown error")
       }
     } finally {
       setConnecting(false)
@@ -48,12 +63,12 @@ export default function Home() {
 
   const disconnectWallet = async () => {
     try {
-      if (window.arweaveWallet && window.arweaveWallet.disconnect) {
+      if (isWalletAvailable && window.arweaveWallet && window.arweaveWallet.disconnect) {
         await window.arweaveWallet.disconnect()
       }
       setConnected(false)
       setWalletAddress("")
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Disconnect error:", error)
     }
   }

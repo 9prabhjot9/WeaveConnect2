@@ -1,15 +1,21 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function Simple() {
   const [connecting, setConnecting] = useState(false)
   const [connected, setConnected] = useState(false)
   const [address, setAddress] = useState('')
   const [disconnecting, setDisconnecting] = useState(false)
+  const [walletAvailable, setWalletAvailable] = useState(false)
+
+  // Check if wallet is available in browser environment
+  useEffect(() => {
+    setWalletAvailable(typeof window !== 'undefined' && !!window.arweaveWallet)
+  }, [])
 
   async function connectWallet() {
-    if (!window.arweaveWallet) {
+    if (!walletAvailable) {
       alert('Wanders wallet not found. Please install it first.')
       window.open('https://www.wander.app', '_blank')
       return
@@ -18,19 +24,22 @@ export default function Simple() {
     setConnecting(true)
     
     try {
+      // TypeScript safety check
+      if (!window.arweaveWallet) {
+        throw new Error("Arweave wallet not available");
+      }
+      
       await window.arweaveWallet.connect(['ACCESS_ADDRESS', 'SIGN_TRANSACTION'])
       const walletAddress = await window.arweaveWallet.getActiveAddress()
       setAddress(walletAddress)
       setConnected(true)
     } catch (error) {
       // Handle user cancellation gracefully
-      if (error.message && (
-        error.message.includes("User cancelled") || 
-        error.message.includes("user rejected") ||
-        error.message.includes("cancelled the AuthRequest")
-      )) {
-        console.log("User cancelled the wallet connection request")
-      } else {
+      if (error && typeof error === 'object' && 'message' in error && 
+          typeof error.message === 'string' && 
+          !(error.message.includes("User cancelled") || 
+            error.message.includes("user rejected") ||
+            error.message.includes("cancelled the AuthRequest"))) {
         console.error('Failed to connect wallet:', error)
       }
     } finally {
@@ -43,7 +52,7 @@ export default function Simple() {
     
     try {
       // Check if disconnect method exists (it should in Wanders wallet)
-      if (window.arweaveWallet.disconnect) {
+      if (walletAvailable && window.arweaveWallet && window.arweaveWallet.disconnect) {
         await window.arweaveWallet.disconnect()
       }
       
